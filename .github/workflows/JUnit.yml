@@ -6,71 +6,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  detect-labs:
-    name: Detect Changed Lab Projects
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
-      has_labs: ${{ steps.matrix.outputs.has_labs }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Find Changed Files
-        id: changed
-        if: github.event_name != 'workflow_dispatch'
-        uses: tj-actions/changed-files@v45
-        with:
-          json: true
-
-      - name: Build Lab Matrix
-        id: matrix
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mapfile -t all_labs < <(find . -mindepth 1 -maxdepth 2 -type f \( -path './lab*/pom.xml' -o -path './Lab*/pom.xml' \) -printf '%h\n' | sed 's#^./##' | sort -u)
-
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            selected=("${all_labs[@]}")
-          else
-            changed_json="${{ steps.changed.outputs.all_changed_files }}"
-            mapfile -t changed_labs < <(printf '%s' "$changed_json" | jq -r '.[]' | awk -F/ 'NF>0 && ($1 ~ /^lab/ || $1 ~ /^Lab/) { print $1 }' | sort -u)
-
-            selected=()
-            for lab in "${all_labs[@]}"; do
-              for changed in "${changed_labs[@]}"; do
-                if [[ "$lab" == "$changed" || "$lab" == "$changed"/* ]]; then
-                  selected+=("$lab")
-                  break
-                fi
-              done
-            done
-          fi
-
-          if [[ ${#selected[@]} -eq 0 ]]; then
-            echo 'matrix={"lab":[]}' >> "$GITHUB_OUTPUT"
-            echo 'has_labs=false' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          matrix_json=$(printf '%s\n' "${selected[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0)) | {lab: .}')
-          echo "matrix=$matrix_json" >> "$GITHUB_OUTPUT"
-          echo 'has_labs=true' >> "$GITHUB_OUTPUT"
-
   build:
     name: Build and Run Tests
-    needs: detect-labs
-    if: needs.detect-labs.outputs.has_labs == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.detect-labs.outputs.matrix) }}
     defaults:
       run:
-        working-directory: ${{ matrix.lab }}
+        working-directory: lab2
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -89,7 +30,46 @@ jobs:
         uses: mikepenz/action-junit-report@v5
         if: success() || failure()
         with:
-          check_name: Test Report - ${{ matrix.lab }}
-          report_paths: ${{ matrix.lab }}/target/surefire-reports/TEST-*.xml
+          check_name: Test Report
+          report_paths: lab2/target/surefire-reports/TEST-*.xml
           detailed_summary: true
           include_passed: true
+
+      - name: Generate Allure Report
+        if: success() || failure()
+        run: mvn -B allure:report
+
+      - name: Upload Allure Report
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: allure-report
+          path: lab2/target/site/allure-maven-plugin/
+          retention-days: 30
+
+  publish-report:
+    name: Publish Allure Report to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && (success() || failure())
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Download Allure Report
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: allure-report
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
