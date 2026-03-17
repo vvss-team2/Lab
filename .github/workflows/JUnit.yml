@@ -12,6 +12,10 @@ jobs:
     defaults:
       run:
         working-directory: lab2
+    permissions:
+      contents: read
+      checks: write
+      id-token: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
