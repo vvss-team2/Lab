@@ -228,6 +228,7 @@ jobs:
       - name: Merge Allure Results and History
         env:
           ALL_PROJECTS: ${{ needs.detect-projects.outputs.all_projects }}
+          CHANGED_PROJECTS: ${{ needs.detect-projects.outputs.projects }}
         run: |
           set -euo pipefail
 
@@ -251,6 +252,12 @@ jobs:
             [[ -z "${project}" ]] && continue
 
             current_project_dir="current-allure-results/${project}-allure-results"
+            if [[ ! -d "${current_project_dir}" ]] \
+              && jq -e --arg project "${project}" 'length == 1 and .[0] == $project' <<< "${CHANGED_PROJECTS}" >/dev/null \
+              && find current-allure-results -mindepth 1 -maxdepth 1 -type f | grep -q .; then
+              current_project_dir="current-allure-results"
+            fi
+
             if [[ -d "${current_project_dir}" ]]; then
               rm -rf "combined-project-results/${project}"
               mkdir -p "combined-project-results/${project}"
