@@ -1,21 +1,110 @@
-name: JUnit
+name: Maven Projects CI
 
 on:
   push:
+    paths:
+      - "pom.xml"
+      - "*/pom.xml"
+      - "*/src/**"
+      - "*/.mvn/**"
+      - ".github/workflows/**"
   pull_request:
+    paths:
+      - "pom.xml"
+      - "*/pom.xml"
+      - "*/src/**"
+      - "*/.mvn/**"
+      - ".github/workflows/**"
   workflow_dispatch:
 
+concurrency:
+  group: maven-projects-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    name: Build and Run Tests
+  detect-projects:
+    name: Detect Changed Maven Projects
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: lab2
+    outputs:
+      projects: ${{ steps.detect.outputs.projects }}
+      has_projects: ${{ steps.detect.outputs.has_projects }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Changed Projects
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t all_projects < <(find . -mindepth 2 -maxdepth 2 -name pom.xml -printf '%h\n' | sed 's|^\./||' | sort)
+
+          run_all=false
+          changed_files=''
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            run_all=true
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.sha }}"
+            changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+
+            if [[ -z "$base_sha" || "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
+              run_all=true
+            else
+              changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+            fi
+          fi
+
+          if [[ "$run_all" == false ]]; then
+            if grep -Eq '^(pom\.xml|\.github/workflows/)' <<< "$changed_files"; then
+              run_all=true
+            fi
+          fi
+
+          if [[ "$run_all" == true ]]; then
+            selected_projects=("${all_projects[@]}")
+          else
+            mapfile -t selected_projects < <(
+              while IFS= read -r file; do
+                [[ -z "$file" ]] && continue
+                project_dir="${file%%/*}"
+                if [[ -f "$project_dir/pom.xml" ]]; then
+                  printf '%s\n' "$project_dir"
+                fi
+              done <<< "$changed_files" | sort -u
+            )
+          fi
+
+          if [[ ${#selected_projects[@]} -eq 0 ]]; then
+            projects_json='[]'
+            has_projects=false
+          else
+            projects_json="$(printf '%s\n' "${selected_projects[@]}" | jq -R . | jq -sc .)"
+            has_projects=true
+          fi
+
+          echo "projects=$projects_json" >> "$GITHUB_OUTPUT"
+          echo "has_projects=$has_projects" >> "$GITHUB_OUTPUT"
+
+  test-projects:
+    name: Test ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    needs: detect-projects
+    if: needs.detect-projects.outputs.has_projects == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.detect-projects.outputs.projects) }}
     permissions:
       contents: read
       checks: write
-      id-token: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -28,55 +117,21 @@ jobs:
           cache: maven
 
       - name: Build and Run Tests
-        run: mvn -B test
+        run: mvn -B -f "${{ matrix.project }}/pom.xml" test
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v5
         if: success() || failure()
         with:
-          check_name: Test Report
-          report_paths: lab2/target/surefire-reports/TEST-*.xml
+          check_name: ${{ matrix.project }} Test Report
+          report_paths: ${{ matrix.project }}/target/surefire-reports/TEST-*.xml
           detailed_summary: true
           include_passed: true
 
-      - name: Generate Allure Report
-        if: success() || failure()
-        run: |
-          wget -qO allure.tgz https://github.com/allure-framework/allure2/releases/download/2.29.0/allure-2.29.0.tgz
-          tar -xzf allure.tgz
-          allure-2.29.0/bin/allure generate target/surefire-reports -o "$GITHUB_WORKSPACE/allure-report" --clean
-
-      - name: Upload Allure Report
+      - name: Upload Surefire Reports
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
-          name: allure-report
-          path: allure-report/
-          retention-days: 30
-
-  publish-report:
-    name: Publish Allure Report to GitHub Pages
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main' && (success() || failure())
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - name: Download Allure Report
-        uses: actions/download-artifact@v4
-        with:
-          name: allure-report
-          path: allure-report
-
-      - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: allure-report
-
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@v4
+          name: ${{ matrix.project }}-surefire-reports
+          path: ${{ matrix.project }}/target/surefire-reports
+          if-no-files-found: ignore
