@@ -181,15 +181,15 @@ jobs:
           mkdir -p previous-allure-state
 
           workflow_runs_json="$(curl -fsSL \
-            -H \"Authorization: Bearer ${GH_TOKEN}\" \
-            -H \"Accept: application/vnd.github+json\" \
-            \"https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/JUnit.yml/runs?branch=main&status=completed&per_page=20\")"
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/JUnit.yml/runs?branch=main&status=completed&per_page=20")"
 
-          previous_run_id="$(jq -r --argjson current_run \"${GITHUB_RUN_ID}\" '
+          previous_run_id="$(jq -r --argjson current_run "${GITHUB_RUN_ID}" '
             .workflow_runs[]
             | select(.id != $current_run and .conclusion == "success")
             | .id
-          ' <<< \"${workflow_runs_json}\" | head -n 1)"
+          ' <<< "${workflow_runs_json}" | head -n 1)"
 
           if [[ -z "${previous_run_id}" ]]; then
             echo "No previous successful main run found."
@@ -197,15 +197,15 @@ jobs:
           fi
 
           artifacts_json="$(curl -fsSL \
-            -H \"Authorization: Bearer ${GH_TOKEN}\" \
-            -H \"Accept: application/vnd.github+json\" \
-            \"https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${previous_run_id}/artifacts?per_page=100\")"
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${previous_run_id}/artifacts?per_page=100")"
 
           artifact_id="$(jq -r '
             .artifacts[]
             | select(.name == "allure-state" and .expired == false)
             | .id
-          ' <<< \"${artifacts_json}\" | head -n 1)"
+          ' <<< "${artifacts_json}" | head -n 1)"
 
           if [[ -z "${artifact_id}" ]]; then
             echo "No previous allure-state artifact found."
@@ -213,9 +213,9 @@ jobs:
           fi
 
           curl -fsSL \
-            -H \"Authorization: Bearer ${GH_TOKEN}\" \
-            -H \"Accept: application/vnd.github+json\" \
-            \"https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip\" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
             -o allure-state.zip
 
           unzip -q allure-state.zip -d previous-allure-state
@@ -240,7 +240,7 @@ jobs:
           fi
 
           while IFS= read -r project_dir; do
-            project_name="$(basename \"${project_dir}\")"
+            project_name="$(basename "${project_dir}")"
 
             if ! jq -e --arg project "${project_name}" '.[] == $project' <<< "${ALL_PROJECTS}" >/dev/null; then
               rm -rf "${project_dir}"
@@ -263,7 +263,7 @@ jobs:
           fi
 
           while IFS= read -r project_dir; do
-            project_name="$(basename \"${project_dir}\")"
+            project_name="$(basename "${project_dir}")"
             mkdir -p "allure-state/project-results/${project_name}"
             cp -R "${project_dir}/." "allure-state/project-results/${project_name}/"
           done < <(find combined-project-results -mindepth 1 -maxdepth 1 -type d | sort)
