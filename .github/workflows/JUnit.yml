@@ -1,5 +1,8 @@
 name: Maven Projects CI
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     paths:
@@ -30,7 +33,7 @@ jobs:
       has_projects: ${{ steps.detect.outputs.has_projects }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -107,10 +110,10 @@ jobs:
       checks: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set Up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -120,7 +123,7 @@ jobs:
         run: mvn -B -f "${{ matrix.project }}/pom.xml" test
 
       - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v5
+        uses: mikepenz/action-junit-report@v6
         if: success() || failure()
         with:
           check_name: ${{ matrix.project }} Test Report
@@ -129,7 +132,7 @@ jobs:
           include_passed: true
 
       - name: Upload Surefire Reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: success() || failure()
         with:
           name: ${{ matrix.project }}-surefire-reports
