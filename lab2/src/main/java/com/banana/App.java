@@ -1,17 +1,15 @@
 package com.banana;
+
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.Scanner;
 
 public class App {
 
     /**
      * Counts the number of even natural numbers in an array.
-     * * @param n The expected number of elements.
-     * @param valuesArray The array of numbers to check.
-     * @return The count of even numbers.
-     * @throws IllegalArgumentException if constraints are violated.
      */
     public static int countEvenNumbers(int n, int[] valuesArray) {
-        // Validation for Req_EC 1.0 & 2.0: Natural numbers and array length
         if (n < 0) {
             throw new IllegalArgumentException("Error: n must be a natural number (>= 0).");
         }
@@ -22,12 +20,9 @@ public class App {
 
         int count = 0;
         for (int num : valuesArray) {
-            // Validation for natural numbers (Req_EC 1.0: input < 0 is invalid)
             if (num < 0) {
                 throw new IllegalArgumentException("Error: Array contains non-natural number: " + num);
             }
-
-            // Logic for even numbers
             if (num % 2 == 0) {
                 count++;
             }
@@ -36,35 +31,38 @@ public class App {
     }
 
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-
-        try {
-            System.out.print("Enter number of elements (n): ");
+        File inputFile = new File("in.txt");
+        
+        try (Scanner scanner = new Scanner(inputFile)) {
+            // Read n (the first number in the file)
             if (!scanner.hasNextInt()) {
-                System.out.println("Error: Input is not an integer.");
+                System.out.println("Error: File is empty or does not start with an integer.");
                 return;
             }
             int n = scanner.nextInt();
 
+            // Read the n numbers into the array
             int[] arr = new int[n];
-            System.out.println("Enter " + n + " natural numbers:");
             for (int i = 0; i < n; i++) {
-                if (!scanner.hasNextInt()) {
-                    System.out.println("Error: All inputs must be integers.");
-                    return;
+                if (scanner.hasNextInt()) {
+                    arr[i] = scanner.nextInt();
+                } else {
+                    // Handle cases where n is larger than the actual count of numbers in the file
+                    throw new IllegalArgumentException("Error: Expected " + n + " elements, but file ended early.");
                 }
-                arr[i] = scanner.nextInt();
             }
 
             int result = countEvenNumbers(n, arr);
-            System.out.println("Result: " + result);
+            
+            // Output format as requested
+            System.out.println("Number of even numbers in the vector=" + result);
 
+        } catch (FileNotFoundException e) {
+            System.out.println("Error: The file 'in.txt' was not found in the project root.");
         } catch (IllegalArgumentException e) {
             System.out.println(e.getMessage());
-        } catch (NegativeArraySizeException e) {
-            System.out.println("Error: Array size cannot be negative.");
-        } finally {
-            scanner.close();
+        } catch (Exception e) {
+            System.out.println("An unexpected error occurred: " + e.getMessage());
         }
     }
 }

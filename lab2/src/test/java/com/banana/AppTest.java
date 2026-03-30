@@ -1,9 +1,34 @@
 package com.banana;
 
 import static org.junit.Assert.*;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintStream;
+
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 public class AppTest {
+
+    private final PrintStream originalOut = System.out;
+    private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+    private final File inputFile = new File("in.txt");
+
+    @Before
+    public void setUpStreams() {
+        System.setOut(new PrintStream(outContent));
+    }
+
+    @After
+    public void restoreStreamsAndCleanup() {
+        System.setOut(originalOut);
+        if (inputFile.exists()) {
+            inputFile.delete();
+        }
+    }
 
     // --- Equivalence Class (EC) Test Cases ---
 
@@ -70,5 +95,30 @@ public class AppTest {
         int n = 1;
         int[] arr = {-2147483648};
         App.countEvenNumbers(n, arr);
+    }
+
+    // --- App.main I/O Tests ---
+
+    @Test
+    public void testMainOutputsCorrectMessage() throws Exception {
+        try (FileWriter writer = new FileWriter(inputFile)) {
+            writer.write("4 1 2 3 4\n");
+        }
+
+        App.main(new String[] {});
+
+        assertTrue(outContent.toString().contains("Number of even numbers in the vector=2"));
+    }
+
+    @Test
+    public void testMainHandlesMissingFile() {
+        // Ensure file does not exist
+        if (inputFile.exists()) {
+            inputFile.delete();
+        }
+
+        App.main(new String[] {});
+
+        assertTrue(outContent.toString().contains("Error: The file 'in.txt' was not found in the project root."));
     }
 }
