@@ -284,6 +284,32 @@ jobs:
             exit 1
           fi
 
+      - name: Write Allure Executor Metadata
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+
+          build_url="${SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+          report_url="https://${REPOSITORY_OWNER}.github.io/${REPOSITORY_NAME}/"
+
+          cat > merged-allure-results/executor.json <<EOF
+          {
+            "reportName": "${WORKFLOW_NAME} #${RUN_NUMBER}",
+            "buildOrder": ${RUN_NUMBER},
+            "reportUrl": "${report_url}",
+            "name": "GitHub Actions",
+            "type": "github",
+            "buildName": "${WORKFLOW_NAME} #${RUN_NUMBER}",
+            "buildUrl": "${build_url}"
+          }
+          EOF
+
       - name: Generate Allure Report
         run: |
           set -euo pipefail
