@@ -18,12 +18,4 @@
   <name>lab2-takehome</name>
   <!-- FIXME change it to the project's website -->
   <url>http://www.example.com</url>
-
-  <dependencies>
-    <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
 </project>

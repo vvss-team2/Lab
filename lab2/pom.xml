@@ -17,12 +17,4 @@
 
   <name>lab2</name>
   <url>http://www.example.com</url>
-
-  <dependencies>
-    <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
 </project>
