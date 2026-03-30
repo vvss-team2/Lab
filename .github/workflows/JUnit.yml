@@ -29,6 +29,7 @@ jobs:
     name: Detect Changed Maven Projects
     runs-on: ubuntu-latest
     outputs:
+      all_projects: ${{ steps.detect.outputs.all_projects }}
       projects: ${{ steps.detect.outputs.projects }}
       has_projects: ${{ steps.detect.outputs.has_projects }}
     steps:
@@ -44,6 +45,7 @@ jobs:
           set -euo pipefail
 
           mapfile -t all_projects < <(find . -mindepth 2 -maxdepth 2 -name pom.xml -printf '%h\n' | sed 's|^\./||' | sort)
+          all_projects_json="$(printf '%s\n' "${all_projects[@]}" | jq -R . | jq -sc .)"
 
           run_all=false
           changed_files=''
@@ -93,6 +95,7 @@ jobs:
             has_projects=true
           fi
 
+          echo "all_projects=$all_projects_json" >> "$GITHUB_OUTPUT"
           echo "projects=$projects_json" >> "$GITHUB_OUTPUT"
           echo "has_projects=$has_projects" >> "$GITHUB_OUTPUT"
 
@@ -155,6 +158,7 @@ jobs:
       - test-projects
     if: always() && needs.detect-projects.outputs.has_projects == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     permissions:
+      actions: read
       contents: read
       pages: write
       id-token: write
@@ -162,12 +166,116 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - name: Download Allure Results
+      - name: Download Current Allure Results
         uses: actions/download-artifact@v6
         with:
           pattern: "*-allure-results"
-          path: merged-allure-results
-          merge-multiple: true
+          path: current-allure-results
+
+      - name: Restore Previous Allure State
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p previous-allure-state
+
+          workflow_runs_json="$(curl -fsSL \
+            -H \"Authorization: Bearer ${GH_TOKEN}\" \
+            -H \"Accept: application/vnd.github+json\" \
+            \"https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/JUnit.yml/runs?branch=main&status=completed&per_page=20\")"
+
+          previous_run_id="$(jq -r --argjson current_run \"${GITHUB_RUN_ID}\" '
+            .workflow_runs[]
+            | select(.id != $current_run and .conclusion == "success")
+            | .id
+          ' <<< \"${workflow_runs_json}\" | head -n 1)"
+
+          if [[ -z "${previous_run_id}" ]]; then
+            echo "No previous successful main run found."
+            exit 0
+          fi
+
+          artifacts_json="$(curl -fsSL \
+            -H \"Authorization: Bearer ${GH_TOKEN}\" \
+            -H \"Accept: application/vnd.github+json\" \
+            \"https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${previous_run_id}/artifacts?per_page=100\")"
+
+          artifact_id="$(jq -r '
+            .artifacts[]
+            | select(.name == "allure-state" and .expired == false)
+            | .id
+          ' <<< \"${artifacts_json}\" | head -n 1)"
+
+          if [[ -z "${artifact_id}" ]]; then
+            echo "No previous allure-state artifact found."
+            exit 0
+          fi
+
+          curl -fsSL \
+            -H \"Authorization: Bearer ${GH_TOKEN}\" \
+            -H \"Accept: application/vnd.github+json\" \
+            \"https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip\" \
+            -o allure-state.zip
+
+          unzip -q allure-state.zip -d previous-allure-state
+
+          if [[ -d previous-allure-state/allure-state ]]; then
+            cp -R previous-allure-state/allure-state/. previous-allure-state/
+            rm -rf previous-allure-state/allure-state
+          fi
+
+      - name: Merge Allure Results and History
+        env:
+          ALL_PROJECTS: ${{ needs.detect-projects.outputs.all_projects }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p combined-project-results
+          mkdir -p merged-allure-results
+          mkdir -p allure-state/project-results
+
+          if [[ -d previous-allure-state/project-results ]]; then
+            cp -R previous-allure-state/project-results/. combined-project-results/
+          fi
+
+          while IFS= read -r project_dir; do
+            project_name="$(basename \"${project_dir}\")"
+
+            if ! jq -e --arg project "${project_name}" '.[] == $project' <<< "${ALL_PROJECTS}" >/dev/null; then
+              rm -rf "${project_dir}"
+            fi
+          done < <(find combined-project-results -mindepth 1 -maxdepth 1 -type d | sort)
+
+          while IFS= read -r project; do
+            [[ -z "${project}" ]] && continue
+
+            current_project_dir="current-allure-results/${project}-allure-results"
+            if [[ -d "${current_project_dir}" ]]; then
+              rm -rf "combined-project-results/${project}"
+              mkdir -p "combined-project-results/${project}"
+              cp -R "${current_project_dir}/." "combined-project-results/${project}/"
+            fi
+          done < <(jq -r '.[]' <<< "${ALL_PROJECTS}")
+
+          if [[ -d previous-allure-state/history ]]; then
+            cp -R previous-allure-state/history merged-allure-results/history
+          fi
+
+          while IFS= read -r project_dir; do
+            project_name="$(basename \"${project_dir}\")"
+            mkdir -p "allure-state/project-results/${project_name}"
+            cp -R "${project_dir}/." "allure-state/project-results/${project_name}/"
+          done < <(find combined-project-results -mindepth 1 -maxdepth 1 -type d | sort)
+
+          while IFS= read -r result_file; do
+            cp "${result_file}" merged-allure-results/
+          done < <(find combined-project-results -type f | sort)
+
+          if ! find merged-allure-results -mindepth 1 -maxdepth 1 -type f | grep -q .; then
+            echo "No Allure result files available to publish." >&2
+            exit 1
+          fi
 
       - name: Generate Allure Report
         run: |
@@ -176,12 +284,23 @@ jobs:
           tar -xzf allure.tgz
           ./allure-2.29.0/bin/allure generate merged-allure-results -o allure-report --clean
 
+          mkdir -p allure-state
+          cp -R allure-report/history allure-state/history
+
       - name: Upload Allure Report Artifact
         uses: actions/upload-artifact@v6
         with:
           name: allure-report
           path: allure-report
           if-no-files-found: error
+
+      - name: Upload Allure State Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: allure-state
+          path: allure-state
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v4
