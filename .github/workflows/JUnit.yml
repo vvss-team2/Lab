@@ -5,12 +5,6 @@ env:
 
 on:
   push:
-    paths:
-      - "pom.xml"
-      - "*/pom.xml"
-      - "*/src/**"
-      - "*/.mvn/**"
-      - ".github/workflows/**"
   pull_request:
     paths:
       - "pom.xml"
@@ -50,7 +44,7 @@ jobs:
           run_all=false
           changed_files=''
 
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.event_name }}" == "push" ]]; then
             run_all=true
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base_sha="${{ github.event.pull_request.base.sha }}"
