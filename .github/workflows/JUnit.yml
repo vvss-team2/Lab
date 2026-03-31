@@ -117,7 +117,7 @@ jobs:
           cache: maven
 
       - name: Build and Run Tests
-        run: mvn -B -f "${{ matrix.project }}/pom.xml" clean test
+        run: mvn -B -f "${{ matrix.project }}/pom.xml" clean test jacoco:report
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v6
@@ -144,6 +144,14 @@ jobs:
           path: ${{ matrix.project }}/target/allure-results
           if-no-files-found: error
 
+      - name: Upload JaCoCo Report
+        uses: actions/upload-artifact@v6
+        if: success() || failure()
+        with:
+          name: ${{ matrix.project }}-jacoco-report
+          path: ${{ matrix.project }}/target/site/jacoco
+          if-no-files-found: ignore
+
   publish-allure-report:
     name: Publish Allure Report to GitHub Pages
     runs-on: ubuntu-latest
@@ -165,6 +173,12 @@ jobs:
         with:
           pattern: "*-allure-results"
           path: current-allure-results
+
+      - name: Download Current JaCoCo Reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: "*-jacoco-report"
+          path: current-jacoco-reports
 
       - name: Restore Previous Allure State
         env:
@@ -313,6 +327,287 @@ jobs:
 
           mkdir -p allure-state
           cp -R allure-report/history allure-state/history
+
+      - name: Build Coverage Pages
+        run: |
+          set -euo pipefail
+
+          mkdir -p allure-report/coverage
+          : > allure-report/coverage/projects.txt
+
+          {
+            echo '<!doctype html>'
+            echo '<html lang="en">'
+            echo '<head>'
+            echo '  <meta charset="utf-8" />'
+            echo '  <meta name="viewport" content="width=device-width, initial-scale=1" />'
+            echo '  <title>Coverage Reports</title>'
+            echo '  <style>'
+            echo '    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; background: #f7f8fb; color: #1d2433; }'
+            echo '    h1 { margin-top: 0; }'
+            echo '    ul { padding-left: 1.2rem; }'
+            echo '    li { margin: 0.5rem 0; }'
+            echo '    a { color: #0057b8; text-decoration: none; }'
+            echo '    a:hover { text-decoration: underline; }'
+            echo '    .empty { color: #5a6478; }'
+            echo '  </style>'
+            echo '</head>'
+            echo '<body>'
+            echo '  <h1>JaCoCo Coverage Reports</h1>'
+            echo '  <p>Coverage generated for each tested Maven project.</p>'
+            echo '  <ul>'
+          } > allure-report/coverage/index.html
+
+          found_reports=0
+          if [[ -d current-jacoco-reports ]]; then
+            while IFS= read -r report_dir; do
+              project_name="$(basename "${report_dir}")"
+              project_name="${project_name%-jacoco-report}"
+
+              if [[ -f "${report_dir}/index.html" ]]; then
+                mkdir -p "allure-report/coverage/${project_name}"
+                cp -R "${report_dir}/." "allure-report/coverage/${project_name}/"
+                echo "    <li><a href=\"./${project_name}/index.html\">${project_name}</a></li>" >> allure-report/coverage/index.html
+                echo "${project_name}" >> allure-report/coverage/projects.txt
+                found_reports=1
+              fi
+            done < <(find current-jacoco-reports -mindepth 1 -maxdepth 1 -type d | sort)
+          fi
+
+          if [[ "${found_reports}" -eq 0 ]]; then
+            echo '    <li class="empty">No JaCoCo report artifacts were found for this run.</li>' >> allure-report/coverage/index.html
+          fi
+
+          {
+            echo '  </ul>'
+            echo '</body>'
+            echo '</html>'
+          } >> allure-report/coverage/index.html
+
+          jq -Rn '{ projects: [inputs | select(length > 0)] }' < <(sort -u allure-report/coverage/projects.txt) > allure-report/coverage/manifest.json
+
+      - name: Integrate Coverage Navigation in Allure UI
+        run: |
+          set -euo pipefail
+
+          cat > allure-report/coverage-integration.css <<'EOF'
+          #coverage-nav-widget {
+            position: relative;
+            display: inline-flex;
+            margin-left: 12px;
+            z-index: 5;
+          }
+
+          #coverage-nav-widget.coverage-fallback {
+            position: fixed;
+            right: 16px;
+            top: 16px;
+            margin-left: 0;
+            z-index: 9999;
+          }
+
+          #coverage-nav-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 32px;
+            padding: 0 12px;
+            border: 1px solid rgba(37, 42, 54, 0.25);
+            border-radius: 8px;
+            background: #ffffff;
+            color: #252a36;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+          }
+
+          #coverage-nav-toggle:hover {
+            background: #f3f6fb;
+          }
+
+          #coverage-nav-panel {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: 280px;
+            max-height: 60vh;
+            overflow: auto;
+            border-radius: 10px;
+            border: 1px solid rgba(37, 42, 54, 0.18);
+            background: #ffffff;
+            box-shadow: 0 10px 30px rgba(37, 42, 54, 0.2);
+            padding: 10px;
+          }
+
+          #coverage-nav-panel[hidden] {
+            display: none;
+          }
+
+          .coverage-nav-title {
+            margin: 0 0 8px;
+            font-size: 12px;
+            color: #667085;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+
+          .coverage-nav-link {
+            display: block;
+            border-radius: 6px;
+            padding: 8px;
+            color: #0057b8;
+            text-decoration: none;
+            font-size: 13px;
+          }
+
+          .coverage-nav-link:hover {
+            background: #f3f6fb;
+            text-decoration: none;
+          }
+
+          .coverage-nav-empty {
+            margin: 0;
+            padding: 8px;
+            font-size: 13px;
+            color: #667085;
+          }
+          EOF
+
+          cat > allure-report/coverage-integration.js <<'EOF'
+          (function () {
+            var WIDGET_ID = 'coverage-nav-widget';
+
+            function loadManifest() {
+              return fetch('./coverage/manifest.json', { cache: 'no-store' })
+                .then(function (response) {
+                  if (!response.ok) {
+                    throw new Error('manifest not available');
+                  }
+                  return response.json();
+                })
+                .then(function (manifest) {
+                  if (!manifest || !Array.isArray(manifest.projects)) {
+                    return [];
+                  }
+                  return manifest.projects.filter(function (name) {
+                    return typeof name === 'string' && name.length > 0;
+                  });
+                })
+                .catch(function () {
+                  return [];
+                });
+            }
+
+            function createWidget(projects) {
+              var widget = document.createElement('div');
+              widget.id = WIDGET_ID;
+
+              var toggle = document.createElement('button');
+              toggle.id = 'coverage-nav-toggle';
+              toggle.type = 'button';
+              toggle.textContent = 'Coverage';
+              toggle.setAttribute('aria-haspopup', 'true');
+              toggle.setAttribute('aria-expanded', 'false');
+
+              var panel = document.createElement('div');
+              panel.id = 'coverage-nav-panel';
+              panel.hidden = true;
+
+              var title = document.createElement('p');
+              title.className = 'coverage-nav-title';
+              title.textContent = 'JaCoCo Reports';
+              panel.appendChild(title);
+
+              var overview = document.createElement('a');
+              overview.className = 'coverage-nav-link';
+              overview.href = './coverage/index.html';
+              overview.textContent = 'Open coverage overview';
+              panel.appendChild(overview);
+
+              if (projects.length === 0) {
+                var empty = document.createElement('p');
+                empty.className = 'coverage-nav-empty';
+                empty.textContent = 'No project coverage reports available in this run.';
+                panel.appendChild(empty);
+              } else {
+                projects.forEach(function (project) {
+                  var link = document.createElement('a');
+                  link.className = 'coverage-nav-link';
+                  link.href = './coverage/' + encodeURIComponent(project) + '/index.html';
+                  link.textContent = project;
+                  panel.appendChild(link);
+                });
+              }
+
+              toggle.addEventListener('click', function () {
+                var expanded = toggle.getAttribute('aria-expanded') === 'true';
+                toggle.setAttribute('aria-expanded', String(!expanded));
+                panel.hidden = expanded;
+              });
+
+              document.addEventListener('click', function (event) {
+                if (!widget.contains(event.target)) {
+                  toggle.setAttribute('aria-expanded', 'false');
+                  panel.hidden = true;
+                }
+              });
+
+              widget.appendChild(toggle);
+              widget.appendChild(panel);
+              return widget;
+            }
+
+            function findHost() {
+              return (
+                document.querySelector('.app__nav') ||
+                document.querySelector('[class*="app__nav"]') ||
+                document.querySelector('.side-nav') ||
+                document.querySelector('[class*="side-nav"]') ||
+                null
+              );
+            }
+
+            function mountWidget(projects) {
+              if (!document.body || document.getElementById(WIDGET_ID)) {
+                return;
+              }
+
+              var host = findHost();
+              var widget = createWidget(projects);
+
+              if (host) {
+                host.appendChild(widget);
+              } else {
+                widget.classList.add('coverage-fallback');
+                document.body.appendChild(widget);
+              }
+            }
+
+            function bootstrap() {
+              loadManifest().then(function (projects) {
+                mountWidget(projects);
+
+                var observer = new MutationObserver(function () {
+                  if (!document.getElementById(WIDGET_ID)) {
+                    mountWidget(projects);
+                  }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+              });
+            }
+
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', bootstrap);
+            } else {
+              bootstrap();
+            }
+          })();
+          EOF
+
+          if ! grep -q 'coverage-integration.js' allure-report/index.html; then
+            sed -i 's#</head>#  <link rel="stylesheet" href="./coverage-integration.css" />\n</head>#' allure-report/index.html
+            sed -i 's#</body>#  <script src="./coverage-integration.js"></script>\n</body>#' allure-report/index.html
+          fi
 
       - name: Upload Allure Report Artifact
         uses: actions/upload-artifact@v6
