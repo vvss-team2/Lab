@@ -10,9 +10,13 @@ public class Set {
         nVS = 0;
     }
 
-    boolean AddAValue(int newVal) {
-        if (IsInTheSet(newVal))
+    public boolean AddAValue(int newVal) {
+        if (IsInTheSet(newVal)) {
             return false;
+        }
+        if (nVS >= vS.length) {
+            throw new IndexOutOfBoundsException("Set capacity exceeded");
+        }
         vS[nVS++] = newVal;
         return true;
     }

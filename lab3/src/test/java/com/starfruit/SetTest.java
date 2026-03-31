@@ -57,4 +57,18 @@ public class SetTest {
         assertTrue(set.IsInTheSet(2));
         assertTrue(set.IsInTheSet(3));
     }
+    
+    @Test
+    public void testAddMoreThatCapacity() {
+        Set set = new Set(3);
+        set.AddAValue(1);
+        set.AddAValue(2);
+        set.AddAValue(3);
+        try {
+            set.AddAValue(4);
+            fail("Expected IndexOutOfBoundsException");
+        } catch (IndexOutOfBoundsException e) {
+            assertEquals("Set capacity exceeded", e.getMessage());
+        }
+    }
 }
