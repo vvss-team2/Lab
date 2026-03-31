@@ -1,0 +1,5 @@
+code=0
+nE=3
+A d1 f1 3000
+B d2 f2 4000
+C d3 manager 5500

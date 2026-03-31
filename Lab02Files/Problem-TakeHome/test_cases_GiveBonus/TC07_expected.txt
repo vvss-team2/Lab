@@ -1,0 +1,3 @@
+code=0
+nE=1
+Alice d1 manager 3500
