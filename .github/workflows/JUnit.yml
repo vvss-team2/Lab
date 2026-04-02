@@ -419,7 +419,7 @@ jobs:
           }
 
           /* ── overview widget ── */
-          .cov-widget { background: #fff; border-radius: 4px; padding: 20px 25px; min-width: 0; width: 100%; box-sizing: border-box; }
+          .cov-widget { background: #fff; border-radius: 4px; padding: 20px 25px; min-width: 0; box-sizing: border-box; }
           .cov-widget__title {
             margin: 0 0 16px; font-size: 14px; font-weight: 600;
             color: #999; text-transform: uppercase; letter-spacing: .03em;
@@ -542,7 +542,7 @@ jobs:
             }
 
             function addOverviewWidget(manifest) {
-              if (document.getElementById(WIDGET_ID)) return;
+              if (document.getElementById(WIDGET_ID + '-col')) return;
 
               var hash = (location.hash || '#').replace(/^#\/?/, '');
               if (hash !== '' && hash !== 'overview') return;
@@ -594,11 +594,17 @@ jobs:
                 });
               }
 
+              /* wrap in a grid column so it shares equal space with other widgets */
+              var col = document.createElement('div');
+              col.id = WIDGET_ID + '-col';
+              col.className = 'widgets-grid__col';
+              col.appendChild(widget);
+
               /* insert as first widget so it is prominent */
               if (grid.firstChild) {
-                grid.insertBefore(widget, grid.firstChild);
+                grid.insertBefore(col, grid.firstChild);
               } else {
-                grid.appendChild(widget);
+                grid.appendChild(col);
               }
             }
 
