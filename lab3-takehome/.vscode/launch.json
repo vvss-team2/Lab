@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run GiveNextDate",
+            "type": "java",
+            "name": "GiveNextDate",
+            "request": "launch",
+            "mainClass": "com.pomello.GiveNextDate",
+            "projectName": "lab3-takehome",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

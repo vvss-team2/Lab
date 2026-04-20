@@ -17,4 +17,23 @@
 
   <name>lab3-takehome</name>
   <url>http://www.example.com</url>
+
+  <properties>
+    <maven.compiler.source>11</maven.compiler.source>
+    <maven.compiler.target>11</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.0.0</version>
+        <configuration>
+          <mainClass>com.pomello.GiveNextDate</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
