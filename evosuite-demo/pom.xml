@@ -100,8 +100,8 @@
 
     <repositories>
         <repository>
-            <id>evosuite-repo</id>
-            <url>https://www.evosuite.org/m2</url>
+            <id>project-lib</id>
+            <url>file://${project.basedir}/lib/repo</url>
         </repository>
     </repositories>
 
