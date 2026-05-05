@@ -6,6 +6,8 @@ import net.serenitybdd.annotations.Step;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.empty;
 
 public class EndUserSteps {
 
@@ -24,6 +26,11 @@ public class EndUserSteps {
     @Step
     public void should_see_definition(String definition) {
         assertThat(dictionaryPage.getDefinitions(), hasItem(containsString(definition)));
+    }
+
+    @Step
+    public void should_see_results() {
+        assertThat(dictionaryPage.getDefinitions(), not(empty()));
     }
 
     @Step

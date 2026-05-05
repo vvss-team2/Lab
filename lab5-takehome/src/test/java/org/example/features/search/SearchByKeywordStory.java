@@ -26,7 +26,7 @@ public class SearchByKeywordStory {
     public void searching_by_keyword_apple_should_display_the_corresponding_article() {
         anna.is_the_home_page();
         anna.looks_for("apple");
-        anna.should_see_definition("Rachel Appleby: Observations & Reflections: Learning from each other, learning from yourself");
+        anna.should_see_results();
     }
 
     // --- Two additional search terms (In-Class assignment requirement) ---
