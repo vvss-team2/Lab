@@ -18,6 +18,7 @@
     <module>lab3-takehome</module>
     <module>evosuite-demo</module>
     <module>lab4-takehome</module>
+    <module>lab5-inclass</module>
   </modules>
 
   <properties>

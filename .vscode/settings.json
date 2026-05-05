@@ -1,3 +1,14 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.test.config": [
+    {
+      "name": "EvoSuite",
+      "vmArgs": [
+        "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
+        "--add-opens=java.base/java.net=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang=ALL-UNNAMED"
+      ]
+    }
+  ],
+  "java.test.defaultConfig": "EvoSuite"
 }
