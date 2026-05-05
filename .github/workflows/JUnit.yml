@@ -116,10 +116,17 @@ jobs:
           java-version: "17"
           cache: maven
 
+      - name: Set Up Firefox (Serenity projects)
+        if: hashFiles(format('{0}/serenity.properties', matrix.project)) != ''
+        uses: browser-actions/setup-firefox@v1
+
+      - name: Set Up GeckoDriver (Serenity projects)
+        if: hashFiles(format('{0}/serenity.properties', matrix.project)) != ''
+        uses: browser-actions/setup-geckodriver@latest
+
       - name: Build and Run Tests
         run: |
           if [[ -f "${{ matrix.project }}/serenity.properties" ]]; then
-            sudo apt-get install -y firefox-geckodriver
             mvn -B -f "${{ matrix.project }}/pom.xml" clean test -Dheadless.mode=true
           else
             mvn -B -f "${{ matrix.project }}/pom.xml" clean test jacoco:report
