@@ -116,8 +116,21 @@ jobs:
           java-version: "17"
           cache: maven
 
+      - name: Set Up Firefox (Serenity projects)
+        if: hashFiles(format('{0}/serenity.properties', matrix.project)) != ''
+        uses: browser-actions/setup-firefox@v1
+
+      - name: Set Up GeckoDriver (Serenity projects)
+        if: hashFiles(format('{0}/serenity.properties', matrix.project)) != ''
+        uses: browser-actions/setup-geckodriver@latest
+
       - name: Build and Run Tests
-        run: mvn -B -f "${{ matrix.project }}/pom.xml" clean test jacoco:report
+        run: |
+          if [[ -f "${{ matrix.project }}/serenity.properties" ]]; then
+            mvn -B -f "${{ matrix.project }}/pom.xml" clean test -Dheadless.mode=true
+          else
+            mvn -B -f "${{ matrix.project }}/pom.xml" clean test jacoco:report
+          fi
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v6
@@ -142,7 +155,7 @@ jobs:
         with:
           name: ${{ matrix.project }}-allure-results
           path: ${{ matrix.project }}/target/allure-results
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Upload JaCoCo Report
         uses: actions/upload-artifact@v6
@@ -150,6 +163,14 @@ jobs:
         with:
           name: ${{ matrix.project }}-jacoco-report
           path: ${{ matrix.project }}/target/site/jacoco
+          if-no-files-found: ignore
+
+      - name: Upload Serenity Report
+        uses: actions/upload-artifact@v6
+        if: success() || failure()
+        with:
+          name: ${{ matrix.project }}-serenity-report
+          path: ${{ matrix.project }}/target/site/serenity
           if-no-files-found: ignore
 
   publish-allure-report:
@@ -179,6 +200,12 @@ jobs:
         with:
           pattern: "*-jacoco-report"
           path: current-jacoco-reports
+
+      - name: Download Current Serenity Reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: "*-serenity-report"
+          path: current-serenity-reports
 
       - name: Restore Previous Allure State
         env:
@@ -406,6 +433,47 @@ jobs:
           fi
 
           echo '</ul></body></html>' >> allure-report/coverage/index.html
+
+      - name: Build Serenity Pages
+        run: |
+          set -euo pipefail
+
+          mkdir -p allure-report/serenity
+          found_reports=0
+
+          if [[ -d current-serenity-reports ]]; then
+            while IFS= read -r report_dir; do
+              project_name="$(basename "${report_dir}")"
+              project_name="${project_name%-serenity-report}"
+
+              if [[ -f "${report_dir}/index.html" ]]; then
+                mkdir -p "allure-report/serenity/${project_name}"
+                cp -R "${report_dir}/." "allure-report/serenity/${project_name}/"
+                found_reports=1
+              fi
+            done < <(find current-serenity-reports -mindepth 1 -maxdepth 1 -type d | sort)
+          fi
+
+          {
+            echo '<!doctype html><html lang="en"><head><meta charset="utf-8"/>'
+            echo '<meta name="viewport" content="width=device-width,initial-scale=1"/>'
+            echo '<title>Serenity Reports</title>'
+            echo '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:2rem;background:#f7f8fb;color:#1d2433}h1{margin-top:0}ul{padding-left:1.2rem}li{margin:.5rem 0}a{color:#0057b8;text-decoration:none}a:hover{text-decoration:underline}.empty{color:#5a6478}</style>'
+            echo '</head><body>'
+            echo '<h1>Serenity Reports</h1>'
+            echo '<p>UI test reports generated with Serenity BDD.</p><ul>'
+          } > allure-report/serenity/index.html
+
+          if [[ "${found_reports}" -eq 0 ]]; then
+            echo '<li class="empty">No Serenity report artifacts were found for this run.</li>' >> allure-report/serenity/index.html
+          else
+            while IFS= read -r report_dir; do
+              project_name="$(basename "${report_dir}")"
+              echo "<li><a href=\"./${project_name}/index.html\">${project_name}</a></li>" >> allure-report/serenity/index.html
+            done < <(find allure-report/serenity -mindepth 1 -maxdepth 1 -type d | sort)
+          fi
+
+          echo '</ul></body></html>' >> allure-report/serenity/index.html
 
       - name: Integrate Coverage into Allure UI
         run: |
@@ -652,6 +720,74 @@ jobs:
           if ! grep -q 'coverage-integration.js' allure-report/index.html; then
             sed -i "s#</head>#  <link rel=\"stylesheet\" href=\"./coverage-integration.css?v=${bust}\" />\n</head>#" allure-report/index.html
             sed -i "s#</body>#  <script src=\"./coverage-integration.js?v=${bust}\"></script>\n</body>#" allure-report/index.html
+          fi
+
+      - name: Integrate Serenity into Allure UI
+        run: |
+          set -euo pipefail
+
+          cat > allure-report/serenity-integration.js <<'JSEOF'
+          (function () {
+            'use strict';
+
+            var SIDEBAR_ID = 'serenity-sidebar-link';
+            var SERENITY_ICON = '<svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>';
+
+            function addStyles() {
+              if (document.getElementById('serenity-integration-style')) return;
+              var s = document.createElement('style');
+              s.id = 'serenity-integration-style';
+              s.textContent = '.side-nav__link--serenity .side-nav__icon{display:inline-flex;align-items:center;justify-content:center}.side-nav__link--serenity .side-nav__icon svg{width:18px;height:18px;fill:currentColor}';
+              document.head.appendChild(s);
+            }
+
+            function addSidebarLink() {
+              if (document.getElementById(SIDEBAR_ID)) return;
+              var menu = document.querySelector('.side-nav__menu, [class*="side-nav"] ul');
+              if (!menu) return;
+              addStyles();
+              var li = document.createElement('li');
+              li.className = 'side-nav__item';
+              li.setAttribute('data-tooltip', 'Serenity');
+              var a = document.createElement('a');
+              a.id = SIDEBAR_ID;
+              a.className = 'side-nav__link side-nav__link--serenity';
+              a.href = './serenity/index.html';
+              a.target = '_blank';
+              a.rel = 'noopener';
+              var icon = document.createElement('span');
+              icon.className = 'side-nav__icon';
+              icon.innerHTML = SERENITY_ICON;
+              var label = document.createElement('div');
+              label.className = 'side-nav__text';
+              label.textContent = 'Serenity';
+              a.appendChild(icon);
+              a.appendChild(label);
+              li.appendChild(a);
+              menu.appendChild(li);
+            }
+
+            function bootstrap() {
+              function attempt() { addSidebarLink(); }
+              attempt();
+              setTimeout(attempt, 500);
+              setTimeout(attempt, 1500);
+              window.addEventListener('hashchange', function () { setTimeout(attempt, 300); });
+              var observer = new MutationObserver(attempt);
+              observer.observe(document.body, { childList: true, subtree: true });
+            }
+
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', bootstrap);
+            } else {
+              bootstrap();
+            }
+          })();
+          JSEOF
+
+          bust="${GITHUB_RUN_NUMBER}"
+          if ! grep -q 'serenity-integration.js' allure-report/index.html; then
+            sed -i "s#</body>#  <script src=\"./serenity-integration.js?v=${bust}\"></script>\n</body>#" allure-report/index.html
           fi
 
       - name: Upload Allure Report Artifact
