@@ -125,7 +125,10 @@ jobs:
       - name: Build and Run Tests
         run: |
           if [[ -f "${{ matrix.project }}/serenity.properties" ]]; then
-            mvn -B -f "${{ matrix.project }}/pom.xml" clean test -Dheadless.mode=true
+            test_status=0
+            mvn -B -f "${{ matrix.project }}/pom.xml" clean test -Dheadless.mode=true || test_status=$?
+            mvn -B -f "${{ matrix.project }}/pom.xml" serenity:aggregate
+            exit "${test_status}"
           else
             mvn -B -f "${{ matrix.project }}/pom.xml" clean test jacoco:report
           fi
