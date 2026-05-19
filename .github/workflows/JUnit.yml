@@ -116,13 +116,11 @@ jobs:
           java-version: "17"
           cache: maven
 
-      - name: Set Up Firefox (Serenity projects)
+      - name: Verify ChromeDriver (Serenity projects)
         if: hashFiles(format('{0}/serenity.properties', matrix.project)) != ''
-        uses: browser-actions/setup-firefox@v1
-
-      - name: Set Up GeckoDriver (Serenity projects)
-        if: hashFiles(format('{0}/serenity.properties', matrix.project)) != ''
-        uses: browser-actions/setup-geckodriver@latest
+        run: |
+          google-chrome --version
+          chromedriver --version
 
       - name: Build and Run Tests
         run: |
