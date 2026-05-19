@@ -38,10 +38,12 @@ public class VintedPage extends PageObject {
         openHomePage();
 
         List<By> searchBoxLocators = List.of(
+                By.cssSelector("input[data-testid='search-text--input']"),
                 By.cssSelector("input[data-testid='header-search-text-input']"),
                 By.cssSelector("input[data-testid='search-text-input']"),
-                By.cssSelector("input[type='search']"),
                 By.cssSelector("input[name='search_text']"),
+                By.cssSelector("input#search_text"),
+                By.cssSelector("input[type='search']"),
                 By.cssSelector("input[placeholder*='Caut']"),
                 By.cssSelector("input[placeholder*='Search']"),
                 By.cssSelector("input[aria-label*='Caut']"),
@@ -52,19 +54,19 @@ public class VintedPage extends PageObject {
             List<WebElement> candidates = getDriver().findElements(locator);
             for (WebElement candidate : candidates) {
                 if (candidate.isDisplayed() && candidate.isEnabled()) {
-                    candidate.click();
-                    candidate.clear();
-                    candidate.sendKeys(searchTerm);
-                    candidate.sendKeys(Keys.ENTER);
-                    waitUntilBodyIsLoaded();
-                    waitForUrlOrText(searchTerm);
-                    return;
+                    try {
+                        typeIntoSearchBox(candidate, searchTerm);
+                        waitUntilBodyIsLoaded();
+                        waitForUrlOrText(searchTerm);
+                        return;
+                    } catch (RuntimeException ignored) {
+                        // Try the next matching search field; Vinted can render duplicate hidden/sticky inputs.
+                    }
                 }
             }
         }
 
-        // Fallback for Vinted's dynamic header: the public catalog URL is the same page
-        // reached by the search bar after entering a keyword.
+        // Last resort for Vinted's dynamic header: this is the same URL the search bar submits.
         String encodedTerm = URLEncoder.encode(searchTerm, StandardCharsets.UTF_8);
         openVintedUrl(BASE_URL + "/catalog?search_text=" + encodedTerm);
         waitForUrlOrText(searchTerm);
@@ -121,6 +123,18 @@ public class VintedPage extends PageObject {
     private void waitUntilBodyIsLoaded() {
         new WebDriverWait(getDriver(), DEFAULT_TIMEOUT)
                 .until(ExpectedConditions.presenceOfElementLocated(By.tagName("body")));
+    }
+
+    private void typeIntoSearchBox(WebElement searchBox, String searchTerm) {
+        ((JavascriptExecutor) getDriver()).executeScript(
+                "arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});"
+                        + "arguments[0].focus();"
+                        + "arguments[0].value = '';"
+                        + "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));",
+                searchBox
+        );
+        searchBox.sendKeys(searchTerm);
+        searchBox.sendKeys(Keys.ENTER);
     }
 
     private void waitForUrlOrText(String text) {
