@@ -1,0 +1,3 @@
+caseName,filterUrl,expectedOutcome,expectedText
+valid category and brand filter,https://www.vinted.ro/catalog/2632-sneakers/brand/194976-adidas-originals,valid,Pantofi sport adidas Originals
+invalid category filter URL,https://www.vinted.ro/catalog/999999999-invalid-category/brand/194976-adidas-originals,invalid,Pagina nu a fost găsită

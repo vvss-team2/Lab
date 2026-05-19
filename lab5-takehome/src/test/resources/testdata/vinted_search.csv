@@ -1,0 +1,3 @@
+caseName,searchTerm,expectedOutcome,expectedText
+valid search existing brand,adidas,valid,adidas
+invalid search impossible keyword,zzzzzzzzzzzzzznotfound2026,invalid,Nu am găsit
